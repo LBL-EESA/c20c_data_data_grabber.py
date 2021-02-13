@@ -10,10 +10,14 @@ def extract_c20c_data(
         variable_list = None,
         institution = "LBNL",
         model = "CAM5-1-1degree",
-        path_template = "/nersc/s/stoned/C20C/{institution}/{model}/{experiment}/est1/v2-0/3hr/atmos/{variable}/{run}/{variable}_A3hr_{model}_{experiment}_est1_v2-0_{run}.tar",
+        estimate = "est1",
+        version = "v2-0",
+        path_template = "/nersc/s/stoned/C20C/{institution}/{model}/{experiment}/{estimate}/{version}/3hr/atmos/{variable}/{run}/{variable}_A3hr_{model}_{experiment}_{estimate}_{version}_{run}.tar",
         verbose = True,
         output_directory = None,
         verify_first = True,
+        clobber = True,
+        htar_threads = 15,
         ):
     """
         Extracts variables from the C20C+ archive on NERSC HPSS.
@@ -32,6 +36,10 @@ def extract_c20c_data(
 
             model           : the model name
 
+            estimate        : the code name for the forcing estimate
+
+            version         : the run version identifier
+
             path_template   : a template for determining the paths
                               to the input variables.
 
@@ -42,6 +50,15 @@ def extract_c20c_data(
 
             verify_first    : flags whether to verify that all the requested
                               tar files exist in the expected locations.
+
+            clobber         : flags whether to clobber existing files
+                              (if False, then the output directory will be
+                              checked for existing files; if not empty, then
+                              the htar step will be skipped)
+
+            htar_threads    : the maximum number of threads to use for htar
+                              (defaults to 15, which is the built-in default
+                              for htar at NERSC)
 
         output:
         -------
@@ -76,7 +93,9 @@ def extract_c20c_data(
                 run = run,
                 variable = variable,
                 institution = institution,
-                model = model)
+                model = model,
+                estimate = estimate,
+                version = version)
         htar_paths[variable] = htar_path
 
         if verify_first:
@@ -102,6 +121,16 @@ def extract_c20c_data(
         else:
             out_dir = output_directory
 
+
+        # avoid clobbering files if indicated
+        if not clobber:
+            # check if the directory exists
+            if os.path.isdir(out_dir):
+                # check that the output directory is empty; abort otherwise
+                if len(os.listdir(out_dir)) != 0:
+                    vprint(f"Files exist in `{out_dir}` and clobber = False; skipping.")
+                    return
+
         # make sure that the output directory exists
         os.makedirs(out_dir, exist_ok = True)
 
@@ -113,7 +142,7 @@ def extract_c20c_data(
 
         vprint(f"Extracting `{variable}` from `{htar_path}`; this may take some time...")
         htar_output = subprocess.run(
-                ["htar","-xf",f"{htar_path}"],
+                ["htar","-T",str(htar_threads),"-xf",f"{htar_path}"],
                 check = True,
                 capture_output = False,
                 )
@@ -144,7 +173,15 @@ if __name__ == "__main__":
             )
     parser.add_argument(
             "model",
-            help = "the model name (e.g., CAM5-1-1degree"
+            help = "the model name (e.g., CAM5-1-1degree)"
+            )
+    parser.add_argument(
+            "estimate",
+            help = "the code name for the forcing estimate (e.g., est1)",
+            )
+    parser.add_argument(
+            "version",
+            help = "the run version identifier (e.g., v2-0)",
             )
     parser.add_argument(
             "--variable_list",
@@ -155,7 +192,7 @@ if __name__ == "__main__":
     parser.add_argument(
             "--path_template",
             help = "a template for determining the paths to the input variables.",
-            default = "/nersc/s/stoned/C20C/{institution}/{model}/{experiment}/est1/v2-0/3hr/atmos/{variable}/{run}/{variable}_A3hr_{model}_{experiment}_est1_v2-0_{run}.tar"
+            default = "/nersc/s/stoned/C20C/{institution}/{model}/{experiment}/{estimate}/{version}/3hr/atmos/{variable}/{run}/{variable}_A3hr_{model}_{experiment}_{estimate}_{version}_{run}.tar",
             )
     parser.add_argument(
             "--output_directory",
@@ -174,6 +211,18 @@ if __name__ == "__main__":
             default = False,
             action = "store_true",
             )
+    parser.add_argument(
+            "--no_clobber",
+            help = "Flags that output files should not be clobbered.",
+            default = False,
+            action = "store_true",
+            )
+    parser.add_argument(
+            "--htar_threads",
+            help = "The maximum number of threads to use for htar.",
+            default = 15,
+            type = int,
+            )
 
     # parse the input arguments
     args = parser.parse_args()
@@ -188,5 +237,9 @@ if __name__ == "__main__":
         verbose = not args.quiet,
         output_directory = args.output_directory,
         verify_first = not args.no_verify_first,
+        clobber = not args.no_clobber,
+        htar_threads = args.htar_threads,
+        estimate = args.estimate,
+        version = args.version,
     )
 
